@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Registro de Pacientes</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.12.2/dist/web3.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        label { display: block; margin-top: 10px; }
+        input, button { margin-top: 5px; padding: 5px; }
+        .patient { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<h2>Cadastro de Pacientes</h2>
+<form id="patientForm">
+    <label>Nome:</label>
+    <input type="text" id="nome" required>
+    <label>CPF:</label>
+    <input type="text" id="cpf" required>
+    <label>Idade:</label>
+    <input type="number" id="idade" required>
+    <label>Endereço:</label>
+    <input type="text" id="endereco">
+    <button type="submit">Cadastrar Paciente</button>
+</form>
+
+<hr>
+
+<h2>Consultar Paciente por CPF</h2>
+<input type="text" id="cpfConsulta" placeholder="Digite CPF">
+<button onclick="consultarPaciente()">Consultar</button>
+<div id="consultaResultado"></div>
+
+<hr>
+
+<script>
+let web3;
+let contract;
+let account = "0xeBfaA098C53af2e856473933EF44f7bb82342c87"; // Conta fixa do Ganache
+
+const contractAddress = "0x58329b42BA72d2B2b324010C0305Ca5A436E6aFE";
+const contractABI = [
+    {
+      "anonymous": false,
+      "inputs": [
+        {"indexed": false,"internalType": "string","name": "cpf","type": "string"},
+        {"indexed": false,"internalType": "string","name": "name","type": "string"},
+        {"indexed": false,"internalType": "uint256","name": "age","type": "uint256"},
+        {"indexed": false,"internalType": "string","name": "addressInfo","type": "string"}
+      ],
+      "name": "PatientRegistered",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {"internalType": "string","name": "_name","type": "string"},
+        {"internalType": "string","name": "_cpf","type": "string"},
+        {"internalType": "uint256","name": "_age","type": "uint256"},
+        {"internalType": "string","name": "_addressInfo","type": "string"}
+      ],
+      "name": "registerPatient",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "string","name": "_cpf","type": "string"}
+      ],
+      "name": "getPatient",
+      "outputs": [
+        {"internalType": "string","name": "","type": "string"},
+        {"internalType": "string","name": "","type": "string"},
+        {"internalType": "uint256","name": "","type": "uint256"},
+        {"internalType": "string","name": "","type": "string"}
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+];
+
+async function init() {
+    try {
+        web3 = new Web3(new Web3.providers.HttpProvider("http://127.0.0.1:7545"));
+        contract = new web3.eth.Contract(contractABI, contractAddress);
+        console.log("Contrato inicializado com sucesso!");
+    } catch (error) {
+        console.error("Erro ao inicializar Web3:", error);
+        alert("Falha ao conectar ao Ganache.");
+    }
+}
+
+document.getElementById("patientForm").onsubmit = async (e) => {
+    e.preventDefault();
+
+    if (!contract) {
+        alert("Contrato não inicializado. Recarregue a página.");
+        return;
+    }
+
+    const nome = document.getElementById("nome").value.trim();
+    const cpf = document.getElementById("cpf").value.trim();
+    const idade = parseInt(document.getElementById("idade").value);
+    const endereco = document.getElementById("endereco").value.trim();
+
+    if (!nome || !cpf || idade <= 12) {
+        alert("Preencha todos os campos obrigatórios corretamente (idade > 12).");
+        return;
+    }
+
+    try {
+        await contract.methods.registerPatient(nome, cpf, idade, endereco)
+            .send({ from: account, gas: 3000000 });
+
+        alert("Paciente cadastrado com sucesso!");
+    } catch (err) {
+        console.error("Erro ao cadastrar paciente:", err);
+        alert("Erro ao cadastrar paciente: " + err.message);
+    }
+};
+
+async function consultarPaciente() {
+    if (!contract) {
+        alert("Contrato não inicializado. Recarregue a página.");
+        return;
+    }
+
+    const cpf = document.getElementById("cpfConsulta").value.trim();
+    if (!cpf) {
+        alert("Informe um CPF.");
+        return;
+    }
+
+    try {
+        const paciente = await contract.methods.getPatient(cpf).call();
+        document.getElementById("consultaResultado").innerHTML =
+            `<div class="patient">
+                <strong>Nome:</strong> ${paciente[0]} <br>
+                <strong>CPF:</strong> ${paciente[1]} <br>
+                <strong>Idade:</strong> ${paciente[2]} <br>
+                <strong>Endereço:</strong> ${paciente[3]}
+            </div>`;
+    } catch (err) {
+        console.error(err);
+        document.getElementById("consultaResultado").innerHTML = "Paciente não encontrado.";
+    }
+};
+
+window.addEventListener("load", init);
+</script>
+
+</body>
+</html>
