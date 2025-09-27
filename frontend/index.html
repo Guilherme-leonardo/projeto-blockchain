@@ -22,7 +22,7 @@
     <label>Idade:</label>
     <input type="number" id="idade" required>
     <label>Endereço:</label>
-    <input type="text" id="endereco">
+    <input type="text" id="endereco" required>
     <button type="submit">Cadastrar Paciente</button>
 </form>
 
@@ -30,7 +30,7 @@
 
 <h2>Consultar Paciente por CPF</h2>
 <input type="text" id="cpfConsulta" placeholder="Digite CPF">
-<button onclick="consultarPaciente()">Consultar</button>
+<button id="btnConsultar">Consultar</button>
 <div id="consultaResultado"></div>
 
 <hr>
@@ -38,100 +38,77 @@
 <script>
 let web3;
 let contract;
-let account = "0xeBfaA098C53af2e856473933EF44f7bb82342c87"; // Conta fixa do Ganache
+let account;
 
-const contractAddress = "0x58329b42BA72d2B2b324010C0305Ca5A436E6aFE";
-const contractABI = [
-    {
-      "anonymous": false,
-      "inputs": [
-        {"indexed": false,"internalType": "string","name": "cpf","type": "string"},
-        {"indexed": false,"internalType": "string","name": "name","type": "string"},
-        {"indexed": false,"internalType": "uint256","name": "age","type": "uint256"},
-        {"indexed": false,"internalType": "string","name": "addressInfo","type": "string"}
-      ],
-      "name": "PatientRegistered",
-      "type": "event"
-    },
-    {
-      "inputs": [
-        {"internalType": "string","name": "_name","type": "string"},
-        {"internalType": "string","name": "_cpf","type": "string"},
-        {"internalType": "uint256","name": "_age","type": "uint256"},
-        {"internalType": "string","name": "_addressInfo","type": "string"}
-      ],
-      "name": "registerPatient",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {"internalType": "string","name": "_cpf","type": "string"}
-      ],
-      "name": "getPatient",
-      "outputs": [
-        {"internalType": "string","name": "","type": "string"},
-        {"internalType": "string","name": "","type": "string"},
-        {"internalType": "uint256","name": "","type": "uint256"},
-        {"internalType": "string","name": "","type": "string"}
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    }
-];
-
+// Inicializa Web3 e o contrato
 async function init() {
     try {
-        web3 = new Web3(new Web3.providers.HttpProvider("http://127.0.0.1:7545"));
-        contract = new web3.eth.Contract(contractABI, contractAddress);
-        console.log("Contrato inicializado com sucesso!");
-    } catch (error) {
-        console.error("Erro ao inicializar Web3:", error);
-        alert("Falha ao conectar ao Ganache.");
+        // Conecta com MetaMask se disponível, senão Ganache
+        if (window.ethereum) {
+            web3 = new Web3(window.ethereum);
+            await window.ethereum.request({ method: 'eth_requestAccounts' });
+        } else {
+            web3 = new Web3(new Web3.providers.HttpProvider("http://127.0.0.1:7545"));
+        }
+
+        const accounts = await web3.eth.getAccounts();
+        account = accounts[0];
+        console.log("Conta conectada:", account);
+
+        // Carrega JSON do contrato gerado pelo Truffle
+        const response = await fetch('build/contracts/PatientRegistry.json');
+        const PatientRegistryJSON = await response.json();
+
+        // Pega network atual e endereço do contrato
+        const networkId = await web3.eth.net.getId();
+        const deployedNetwork = PatientRegistryJSON.networks[networkId];
+
+        if (!deployedNetwork) {
+            alert("Contrato não encontrado nesta rede!");
+            return;
+        }
+
+        contract = new web3.eth.Contract(PatientRegistryJSON.abi, deployedNetwork.address);
+        console.log("Contrato inicializado em:", deployedNetwork.address);
+
+    } catch (err) {
+        console.error("Erro ao inicializar Web3 ou contrato:", err);
+        alert("Falha ao conectar com a blockchain.");
     }
 }
 
-document.getElementById("patientForm").onsubmit = async (e) => {
-    e.preventDefault();
-
-    if (!contract) {
-        alert("Contrato não inicializado. Recarregue a página.");
-        return;
-    }
+// Cadastro de paciente
+async function cadastrarPaciente(event) {
+    event.preventDefault();
+    if (!contract) { alert("Contrato não inicializado."); return; }
 
     const nome = document.getElementById("nome").value.trim();
     const cpf = document.getElementById("cpf").value.trim();
     const idade = parseInt(document.getElementById("idade").value);
     const endereco = document.getElementById("endereco").value.trim();
 
-    if (!nome || !cpf || idade <= 12) {
-        alert("Preencha todos os campos obrigatórios corretamente (idade > 12).");
+    if (!nome || !cpf || !idade || !endereco) {
+        alert("Preencha todos os campos corretamente.");
         return;
     }
 
     try {
         await contract.methods.registerPatient(nome, cpf, idade, endereco)
             .send({ from: account, gas: 3000000 });
-
         alert("Paciente cadastrado com sucesso!");
+        document.getElementById("patientForm").reset();
     } catch (err) {
         console.error("Erro ao cadastrar paciente:", err);
         alert("Erro ao cadastrar paciente: " + err.message);
     }
-};
+}
 
+// Consulta paciente
 async function consultarPaciente() {
-    if (!contract) {
-        alert("Contrato não inicializado. Recarregue a página.");
-        return;
-    }
+    if (!contract) { alert("Contrato não inicializado."); return; }
 
     const cpf = document.getElementById("cpfConsulta").value.trim();
-    if (!cpf) {
-        alert("Informe um CPF.");
-        return;
-    }
+    if (!cpf) { alert("Informe um CPF."); return; }
 
     try {
         const paciente = await contract.methods.getPatient(cpf).call();
@@ -143,12 +120,15 @@ async function consultarPaciente() {
                 <strong>Endereço:</strong> ${paciente[3]}
             </div>`;
     } catch (err) {
-        console.error(err);
+        console.error("Erro ao consultar paciente:", err);
         document.getElementById("consultaResultado").innerHTML = "Paciente não encontrado.";
     }
-};
+}
 
+// Eventos
 window.addEventListener("load", init);
+document.getElementById("patientForm").addEventListener("submit", cadastrarPaciente);
+document.getElementById("btnConsultar").addEventListener("click", consultarPaciente);
 </script>
 
 </body>
